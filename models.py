@@ -85,26 +85,55 @@ class DNDMaster:
         return "❌ Не удалось создать пересказ"
     
     def generate_image_prompt(self, history_text):
-        """Создаёт промпт для генерации изображения на основе истории"""
-        lines = history_text.strip().split('\n')
-        last_action = lines[-1] if lines else "герой в подземелье"
+        """Создаёт детальный промпт для генерации изображения на основе последних событий"""
         
-        templates = [
-            f"фэнтези сцена: {last_action[:50]}, dark fantasy, магический свет, подземелье",
-            f"D&D приключение: {last_action[:50]}, эпичное фэнтези, детализированная иллюстрация",
-            f"герой в мире Dungeons & Dragons, {last_action[:50]}, стиль фэнтези-арт"
-        ]
+        # Формируем запрос к YandexGPT для создания качественного промпта
+        prompt = f"""На основе последних событий в игре Dungeons & Dragons создай подробный промпт для генерации изображения на русском языке (30-50 слов). Опиши сцену, персонажа, окружение, освещение, настроение.
+
+Последние события:
+{history_text[:1000]}
+
+Промпт для изображения (только описание, без лишних слов):"""
         
-        return random.choice(templates)
-    
-    def generate_image(self, prompt_text):
-        """Генерирует изображение через Yandex Art"""
         headers = {
             "Authorization": f"Api-Key {self.api_key}",
             "Content-Type": "application/json"
         }
         
-        full_prompt = f"{prompt_text}, фэнтези арт, dark fantasy, магическая атмосфера, детализировано, 4k"
+        body = {
+            "modelUri": f"gpt://{self.folder_id}/yandexgpt-lite",
+            "completionOptions": {"stream": False, "temperature": 0.8, "maxTokens": 150},
+            "messages": [{"role": "user", "text": prompt}]
+        }
+        
+        try:
+            response = requests.post(self.url, headers=headers, json=body)
+            
+            if response.status_code == 200:
+                prompt_text = response.json()["result"]["alternatives"][0]["message"]["text"].strip()
+                # Добавляем художественные улучшения
+                enhanced_prompt = f"{prompt_text}, фэнтези арт, dark fantasy, детализированно, магическое освещение, 4k, эпичная сцена"
+                print(f"🎨 Сгенерированный промпт: {enhanced_prompt}")
+                return enhanced_prompt
+            else:
+                # Fallback промпт на основе последнего действия
+                lines = history_text.strip().split('\n')
+                last_action = lines[-1] if lines else "герой в подземелье"
+                fallback_prompt = f"Сцена из D&D: {last_action[:100]}, тёмное фэнтези, детализированная иллюстрация, магический свет"
+                return fallback_prompt
+        except Exception as e:
+            print(f"Ошибка генерации промпта: {e}")
+            return "герой в тёмном подземелье D&D, фэнтези арт, магический свет, эпичная битва"
+    
+    def generate_image(self, prompt_text):
+        """Генерирует изображение через Yandex Art с улучшенными параметрами"""
+        headers = {
+            "Authorization": f"Api-Key {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Добавляем стилевые теги для лучшего качества
+        full_prompt = f"{prompt_text}, high quality, fantasy art, detailed, atmospheric lighting, epic composition"
         
         body = {
             "modelUri": f"art://{self.folder_id}/yandex-art/latest",
@@ -134,10 +163,12 @@ class DNDMaster:
                             print("✅ Изображение сгенерировано!")
                             return result_data["response"]["image"]
                         elif "done" in result_data and result_data["done"]:
+                            if "error" in result_data:
+                                print(f"❌ Ошибка генерации: {result_data['error']}")
                             break
                 return None
             else:
-                print(f"❌ Ошибка: {response.status_code}")
+                print(f"❌ Ошибка запуска генерации: {response.status_code} - {response.text}")
                 return None
         except Exception as e:
             print(f"❌ Исключение: {e}")

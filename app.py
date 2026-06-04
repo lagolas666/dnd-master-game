@@ -65,34 +65,37 @@ def summary():
 
 @app.route('/generate_image', methods=['GET'])
 def generate_image():
-    """Генерирует изображение на основе истории"""
+    """Генерирует изображение на основе истории с улучшенным промптом"""
     history = get_history()
     
-    recent = history[-5:]
+    # Берём последние 10 сообщений для лучшего контекста
+    recent = history[-10:]
     history_text = ""
     for msg in recent:
         role = "Мастер" if msg['role'] == 'master' else "Игрок"
-        history_text += f"{role}: {msg['text'][:150]}\n"
+        history_text += f"{role}: {msg['text'][:300]}\n"
     
+    # Генерируем детальный промпт через GPT
     image_prompt = master.generate_image_prompt(history_text)
-    print(f"🎨 Промпт для изображения: {image_prompt}")
+    print(f"🎨 Итоговый промпт для изображения: {image_prompt}")
     
+    # Генерируем изображение
     image_base64 = master.generate_image(image_prompt)
     
     if image_base64:
         image_id = str(uuid.uuid4())
         image_storage[image_id] = image_base64
         
-        # Очищаем старые изображения (оставляем не более 10)
+        # Очищаем старые изображения
         if len(image_storage) > 10:
             oldest_keys = list(image_storage.keys())[:-10]
             for key in oldest_keys:
                 del image_storage[key]
         
-        # Сохраняем в историю с image_id
+        # Сохраняем в историю с детальным промптом
         history.append({
             'role': 'master', 
-            'text': f"🎨 **СГЕНЕРИРОВАННОЕ ИЗОБРАЖЕНИЕ**\nПромпт: {image_prompt}", 
+            'text': f"🎨 **СГЕНЕРИРОВАННОЕ ИЗОБРАЖЕНИЕ**\n\n**Промпт:** {image_prompt[:200]}...", 
             'image_id': image_id
         })
         
@@ -105,7 +108,7 @@ def generate_image():
             
         return jsonify({'image_id': image_id, 'prompt': image_prompt, 'history': session['history']})
     else:
-        history.append({'role': 'master', 'text': "❌ **НЕ УДАЛОСЬ СГЕНЕРИРОВАТЬ ИЗОБРАЖЕНИЕ**\nПроверьте права доступа к Yandex Art или попробуйте позже."})
+        history.append({'role': 'master', 'text': "❌ **НЕ УДАЛОСЬ СГЕНЕРИРОВАТЬ ИЗОБРАЖЕНИЕ**\nПопробуйте позже или измените запрос."})
         session['history'] = history
         return jsonify({'error': 'Не удалось сгенерировать изображение'}, 500)
 
